@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Script: auratrace-handshake
+# Target Ecosystem: Omarchy 4 Agentic Pipeline
+# Description:
+#   Locates the compiled workspace context payload and injects it directly 
+#   into the user's preferred Omarchy default coding agent inside a fast terminal window.
+# ==============================================================================
+
+set -euo pipefail
+
+CONTEXT_FILE="$HOME/.cache/omarchy/auratrace_context.md"
+
+# Verify that the background telemetry daemon has initialized state
+if [ ! -f "$CONTEXT_FILE" ]; then
+    echo "AuraTrace: Context ledger not ready yet."
+    exit 1
+fi
+
+# Detect user's Omarchy system-wide default coding agent or fall back safely to claude
+DEFAULT_AGENT="${OMARCHY_AGENT:-claude}"
+
+# Launch terminal running the agent pointing directly to the generated context file
+if command -v "$DEFAULT_AGENT" &> /dev/null; then
+    echo "Handshaking workspace state with $DEFAULT_AGENT..."
+    if command -v gnome-terminal &> /dev/null; then
+        gnome-terminal -- sh -c "$DEFAULT_AGENT --prompt 'Review my current workflow context ledger at $CONTEXT_FILE and assist me with my active task.'; exec bash"
+    else
+        x-terminal-emulator -e "$DEFAULT_AGENT --prompt 'Review my current workflow context ledger at $CONTEXT_FILE and assist me with my active task.'"
+    fi
+else
+    echo "AuraTrace Error: Configured coding agent '$DEFAULT_AGENT' not found on PATH."
+    exit 1
+fi
