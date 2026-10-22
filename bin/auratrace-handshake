@@ -9,7 +9,11 @@
 
 set -euo pipefail
 
-CONTEXT_FILE="$HOME/.cache/omarchy/auratrace_context.md"
+CACHE_DIR="$HOME/.cache/omarchy"
+CONTEXT_FILE="$CACHE_DIR/auratrace_context.md"
+
+# Ensure cache directory structure exists
+mkdir -p "$CACHE_DIR"
 
 # Verify that the background telemetry daemon has initialized state
 if [ ! -f "$CONTEXT_FILE" ]; then
@@ -23,10 +27,20 @@ DEFAULT_AGENT="${OMARCHY_AGENT:-claude}"
 # Launch terminal running the agent pointing directly to the generated context file
 if command -v "$DEFAULT_AGENT" &> /dev/null; then
     echo "Handshaking workspace state with $DEFAULT_AGENT..."
-    if command -v gnome-terminal &> /dev/null; then
-        gnome-terminal -- sh -c "$DEFAULT_AGENT --prompt 'Review my current workflow context ledger at $CONTEXT_FILE and assist me with my active task.'; exec bash"
+    
+    PROMPT_CMD="$DEFAULT_AGENT --prompt 'Review my current workflow context ledger at $CONTEXT_FILE and assist me with my active task.'"
+    
+    # Priority-based terminal emulator detection optimized for Omarchy / Wayland environments
+    if command -v foot &> /dev/null; then
+        foot -- sh -c "$PROMPT_CMD; exec bash"
+    elif command -v kitty &> /dev/null; then
+        kitty -- sh -c "$PROMPT_CMD; exec bash"
+    elif command -v alacritty &> /dev/null; then
+        alacritty -e sh -c "$PROMPT_CMD; exec bash"
+    elif command -v gnome-terminal &> /dev/null; then
+        gnome-terminal -- sh -c "$PROMPT_CMD; exec bash"
     else
-        x-terminal-emulator -e "$DEFAULT_AGENT --prompt 'Review my current workflow context ledger at $CONTEXT_FILE and assist me with my active task.'"
+        x-terminal-emulator -e "$PROMPT_CMD"
     fi
 else
     echo "AuraTrace Error: Configured coding agent '$DEFAULT_AGENT' not found on PATH."
