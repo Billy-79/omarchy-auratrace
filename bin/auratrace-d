@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""
+-------------------------------------------------------------------------------
+Plugin: AuraTrace Daemon (auratrace-d)
+Target Ecosystem: Omarchy 4 (Quattro) / Ubuntu 26.04 Development Environment
+Author: Top-Tier Omakase Engineer
+Description: 
+    Continuously samples local system telemetry (active window title, git 
+    branch status, and recent terminal execution logs) and writes an atomic 
+    markdown snapshot to ~/.cache/omarchy/auratrace_context.md. This serves 
+    as the ground-truth memory state for downstream AI coding agents.
+-------------------------------------------------------------------------------
+"""
+
+import os
+import time
+import json
+import subprocess
+from pathlib import Path
+
+# Define paths respecting XDG specifications and Omarchy conventions
+CACHE_DIR = Path.home() / ".cache" / "omarchy"
+CONTEXT_FILE = CACHE_DIR / "auratrace_context.md"
+HISTORY_FILE = Path.home() / ".bash_history"  # Fallback history source
+
+
+def ensure_environment() -> None:
+    """Ensure the target runtime cache directory structure exists securely."""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"[AuraTrace Fatal]: Failed to initialize cache directory: {e}")
+        raise
+
+
+def get_active_window_title() -> tuple[str, str]:
+    """
+    Query the active window context. 
+    On Ubuntu (GNOME/X11/Wayland), we use xdotool/gdbus or fallback gracefully 
+    if running outside a native Hyprland compositor.
+    """
+    try:
+        # Attempt standard Linux desktop query via xdotool if available
+        result = subprocess.run(
+            ["xdotool", "getactivewindow", "getwindowname"],
+            capture_output=True, text=True, check=True, timeout=1
+        )
+        return result.stdout.strip(), "x11-window"
+    except Exception:
+        try:
+            # Fallback for Wayland/GNOME environments using gdbus shell query
+            result = subprocess.run(
+                ["gdbus", "call", "--session", "--dest", "org.gnome.Shell", 
+                 "--object-path", "/org/gnome/Shell", "--method", "org.gnome.Shell.Eval", 
+                 "global.display.focus_window?.get_title()"],
+                capture_output=True, text=True, timeout=1
+            )
+            if result.returncode == 0 and result.stdout:
+                title = result.stdout.strip().strip("'")
+                return title if title else "Desktop / Idle", "gnome-wayland"
+        except Exception:
+            pass
+            
+    return "Ubuntu Desktop Sandbox", "generic-workspace"
+
+
+def get_git_branch() -> str:
+    """
+    Extract the active git branch name if the current working context 
+    resides inside a valid version-controlled repository tree.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, timeout=1
+        )
+        branch = result.stdout.strip()
+        return branch if branch else "detached-HEAD"
+    except Exception:
+        return "non-git-context"
+
+
+def get_recent_commands(limit: int = 5) -> list[str]:
+    """
+    Read the local shell history file to extract the developer's 
+    most recent micro-intentions and terminal executions.
+    """
+    try:
+        # Check bash history; check zsh history if bash doesn't exist
+        hist_path = HISTORY_FILE if HISTORY_FILE.exists() else Path.home() / ".zsh_history"
+        if hist_path.exists():
+            with open(hist_path, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+                cleaned = [line.strip() for line in lines if line.strip()]
+                return cleaned[-limit:] if cleaned else ["No history available"]
+    except Exception:
+        pass
+    return ["History unreadable"]
+
+
+def compile_context_payload() -> None:
+    """
+    Aggregate all isolated system states into a single, cohesive, highly-readable
+    Markdown document optimized for LLM comprehension.
+    """
+    window_title, window_class = get_active_window_title()
+    git_branch = get_git_branch()
+    recent_cmds = get_recent_commands(5)
+    
+    cmds_str = "\n".join(recent_cmds)
+    
+    # Constructed payload without inline triple quotes to ensure formatting cleanliness
+    payload = (
+        "<!-- OMARCHY 4 AURATRACE CONTEXT LEDGER -->\n"
+        "# Developer Flow State Snapshot\n"
+        f"- **Timestamp:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"- **Active Focus Window:** {window_title} (`{window_class}`)\n"
+        f"- **Active Git Branch:** `{git_branch}`\n\n"
+        "## Recent Terminal Execution Log\n"
+        "```bash\n"
+        f"{cmds_str}\n"
+        "```\n"
+    )
+
+    # Write atomically using a temporary file to avoid race conditions
+    temp_file = CONTEXT_FILE.with_suffix(".tmp")
+    try:
+        temp_file.write_text(payload, encoding="utf-8")
+        temp_file.replace(CONTEXT_FILE)
+    except Exception as e:
+        print(f"[AuraTrace Warning]: Atomic write failed: {e}")
+
+
+def main() -> None:
+    """Main background polling loop. Runs every 5 seconds for minimal CPU overhead."""
+    ensure_environment()
+    print("[AuraTrace Daemon]: Starting telemetry tracking loop...")
+    while True:
+        try:
+            compile_context_payload()
+        except Exception as e:
+            print(f"[AuraTrace Runtime Error]: {e}")
+        time.sleep(5)
+
+
+if __name__ == "__main__":
+    main()

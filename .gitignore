@@ -1,0 +1,10 @@
+# System and Cache files
+*.tmp
+*.log
+.cache/
+__pycache__/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
