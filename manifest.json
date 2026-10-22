@@ -1,0 +1,10 @@
+{
+  "name": "auratrace",
+  "version": "1.0.0",
+  "author": "Billy-79",
+  "description": "Real-time context telemetry bridge feeding local developer flow directly into Omarchy 4 agents.",
+  "compatibility": "omarchy-4.0+",
+  "main_widget": "AuraTraceWidget.qml",
+  "daemon": "auratrace-d",
+  "handshake_trigger": "auratrace-handshake"
+}
