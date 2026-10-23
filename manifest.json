@@ -9,6 +9,6 @@
   "kinds": ["bar-widget"],
   "activation": "on-demand",
   "entryPoints": {
-    "barWidget": "AuraTraceWidget.qml"
+    "barWidget": "quickshell/AuraTraceWidget.qml"
   }
 }
