@@ -2,8 +2,8 @@
 """
 -------------------------------------------------------------------------------
 Plugin: AuraTrace Daemon (auratrace-d)
-Target Ecosystem: Omarchy 4 (Quattro) / Ubuntu 26.04 Development Environment
-Author: Top-Tier Omakase Engineer
+Target Ecosystem: Omarchy 4 (Quattro)
+Author: Billy-79
 Description: 
     Continuously samples local system telemetry (active window title, git 
     branch status, and recent terminal execution logs) and writes an atomic 
@@ -28,6 +28,8 @@ def ensure_environment() -> None:
     """Ensure the target runtime cache directory structure exists securely."""
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        # Enforce strict private permissions on cache directory (0700)
+        os.chmod(CACHE_DIR, 0o700)
     except OSError as e:
         print(f"[AuraTrace Fatal]: Failed to initialize cache directory: {e}")
         raise
@@ -40,7 +42,6 @@ def get_active_window_title() -> tuple[str, str]:
     if running outside a native Hyprland compositor.
     """
     try:
-        # Attempt standard Linux desktop query via xdotool if available
         result = subprocess.run(
             ["xdotool", "getactivewindow", "getwindowname"],
             capture_output=True, text=True, check=True, timeout=1
@@ -48,7 +49,6 @@ def get_active_window_title() -> tuple[str, str]:
         return result.stdout.strip(), "x11-window"
     except Exception:
         try:
-            # Fallback for Wayland/GNOME environments using gdbus shell query
             result = subprocess.run(
                 ["gdbus", "call", "--session", "--dest", "org.gnome.Shell", 
                  "--object-path", "/org/gnome/Shell", "--method", "org.gnome.Shell.Eval", 
@@ -86,7 +86,6 @@ def get_recent_commands(limit: int = 5) -> list[str]:
     most recent micro-intentions and terminal executions.
     """
     try:
-        # Check bash history; check zsh history if bash doesn't exist
         hist_path = HISTORY_FILE if HISTORY_FILE.exists() else Path.home() / ".zsh_history"
         if hist_path.exists():
             with open(hist_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -109,7 +108,6 @@ def compile_context_payload() -> None:
     
     cmds_str = "\n".join(recent_cmds)
     
-    # Constructed payload without inline triple quotes to ensure formatting cleanliness
     payload = (
         "<!-- OMARCHY 4 AURATRACE CONTEXT LEDGER -->\n"
         "# Developer Flow State Snapshot\n"
@@ -122,11 +120,16 @@ def compile_context_payload() -> None:
         "```\n"
     )
 
-    # Write atomically using a temporary file to avoid race conditions
+    # Set strict umask so newly created files default to private permissions (0600)
+    os.umask(0o077)
+
+    # Write atomically using a temporary file to avoid race conditions and secure permissions
     temp_file = CONTEXT_FILE.with_suffix(".tmp")
     try:
         temp_file.write_text(payload, encoding="utf-8")
+        os.chmod(temp_file, 0o600)
         temp_file.replace(CONTEXT_FILE)
+        os.chmod(CONTEXT_FILE, 0o600)
     except Exception as e:
         print(f"[AuraTrace Warning]: Atomic write failed: {e}")
 
